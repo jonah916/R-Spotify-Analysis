@@ -1,0 +1,193 @@
+---
+title: "805132299_stats20_lab_3"
+author: "Jonah Wiener-Brodkey"
+date: "May 29, 2019"
+output: html_document
+---
+
+```{r, message = FALSE, warning = FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+spotifyTop <- read_csv("spotifyTop.csv")
+```
+  
+1. 
+```{r}
+glimpse(spotifyTop)
+```
+  a. There are 6,073 observations and 36 variables in the dataset.
+  b. Potential goruping variables could include album_release_year, mode, key, time_signature, disc_number, and track_number, as these variables are typically integers that can be easily divided into groups. There are others that could be treated as grouping variables, although they are generally not integers and thus do not have clear boundaries like the aforementioned variables. These other variables include all of the scaled variables (danceability, speechiness, liveness, etc.), loudness, tempo, and duration_ms.
+  c. The truly numeric variables are album_release_year, danceability, energy, key, loudness, mode, speechiness, acousticness, instrumentalness, liveness, valence, tempo, time_signature, disc_number, duration_ms, and track_number.
+
+
+2. a. 
+```{r}
+numeric_cols <- select(spotifyTop, danceability, energy, loudness, speechiness, acousticness, instrumentalness, liveness, valence, tempo, duration_ms)
+descriptivestats <- function(x = numeric_cols){
+  print("The following summary includes min, max, mean, and median.")
+  print(summary(x))
+  print("The following is a summary of standard deviation.")
+  print(apply(na.omit(x), 2, sd))
+  print("The following is a summary of IQR.")
+  print(apply(na.omit(x), 2, IQR))
+}
+descriptivestats()
+```
+  b.
+```{r}
+scaled_cols <- spotifyTop[,c(8,9,13:17)]
+
+rowSums <- function(x){
+  if ((all(lapply(x, class) %in% c("numeric", "integer")) == FALSE)){
+    stop("You must enter an object with only numeric or integer entries.")
+  }
+  apply(x, 1, sum, na.rm = TRUE)
+}
+head(rowSums(scaled_cols), 50)
+
+
+rowMeans <- function(x){
+  if ((all(lapply(x, class) %in% c("numeric", "integer")) == FALSE)){
+    stop("You must enter an object with only numeric or integer entries.")
+  }
+  apply(x, 1, mean, na.rm = TRUE)
+}
+head(rowMeans(scaled_cols), 50)
+
+```
+  c. 
+```{r}
+partc <- spotifyTop[, c(11, 18, 23)]
+
+colMeans <- function(x){
+  if ((all(lapply(x, class) %in% c("numeric", "integer")) == FALSE)){
+    stop("You must enter an object with only numeric or integer entries.")
+  }
+  else {
+    apply(x, 2, mean, na.rm = TRUE)
+  }
+}
+colMeans(partc)
+
+
+colMedians <- function(x){
+  if ((all(lapply(x, class) %in% c("numeric", "integer")) == FALSE)){
+    stop("You must enter an object with only numeric or integer entries.")
+  }
+  else {
+    apply(x, 2, median, na.rm = TRUE)
+  }
+}
+colMedians(partc)
+
+```
+  d.
+```{r}
+zScore <- function(song, variable){
+  if (sum(spotifyTop$track_name == song) > 1){
+    stop("That song appears more than once in the dataframe. Choose a different song.")
+  }
+  if ((class(spotifyTop[[variable]]) %in% c("numeric", "integer")) == TRUE){
+    song_number <- which(spotifyTop$track_name == song)
+    column_number <- which(colnames(spotifyTop) == variable)
+    X <- as.numeric(spotifyTop[song_number, column_number])
+    var_mean <- mean(na.omit(spotifyTop[[column_number]]))
+    var_sd <- sd(na.omit(spotifyTop[[column_number]]))
+    z <- (X-var_mean)/var_sd
+    print(z)
+  }
+  else {
+    stop("You must enter a numeric or integer variable.")
+  }
+}
+zScore(song = "Barcelona", variable = "tempo")
+```
+  e.
+```{r}
+which.minn <- function(n = 1, variable){
+  if (n < 1){
+    stop("You must print at least 1 entry.")
+  }
+  if ((class(spotifyTop[[variable]]) %in% c("numeric", "integer")) == TRUE){
+    spotifyTop[[variable]] %>%
+    order() %>%
+    head(n)
+  }
+  else {
+    stop("You must choose a numeric or integer variable.")
+  }
+}
+which.minn(n = 50, variable = "tempo")
+
+
+which.maxn <- function(n = 1, variable){
+  if (n < 1){
+    stop("You must print at least 1 entry.")
+  }
+  if ((class(spotifyTop[[variable]]) %in% c("numeric", "integer")) == TRUE){
+    spotifyTop[[variable]] %>%
+    order(decreasing = TRUE) %>%
+    head(n)
+  }
+  else {
+    stop("You must choose a numeric or integer variable.")
+  }
+}
+which.maxn(n = 50, variable = "tempo")
+```
+
+3. 
+```{r}
+spotifyTop$slowfast <- cut(spotifyTop$tempo,
+                           breaks = c(min(spotifyTop$tempo),
+                                      median(spotifyTop$tempo),
+                                      max(spotifyTop$tempo)),
+                           labels = c("slow", "fast"))
+t.test(energy ~ slowfast, data = spotifyTop)
+
+```
+Since the p-value < 0.05, we reject the null hypothesis that the difference in mean energy between slow songs and fast songs is 0. We conclude that slow songs and fast songs *do* tend to have different energies.
+
+4. 
+```{r}
+spotifyTop$length <- cut(spotifyTop$duration_ms,
+                         breaks = quantile(spotifyTop$duration_ms, probs = c(0, 0.2, 0.4, 0.6, 0.8, 1)),
+                         labels = c("Short", "Shortish", "Mid-Length", "Longish", "Long"))
+spotifyTop %>%
+  group_by(spotifyTop$length) %>%
+  summarise(mean = mean(track_number), median = median(track_number), sd = sd(track_number))
+
+oneway.test(spotifyTop$track_number ~ spotifyTop$length)
+```
+Since the p-value is very small, we reject the null and conclude that songs with different track numbers (meaning that they appear in different positions on an album) tend to have different lengths.
+
+5.
+We will investigate whether there is a meaningful relationship between a song's acousticness and loudness. Intutition might tell us that more acoustic songs would generally be quieter. We can test this hypothesis by plotting acousticness against loudness and superimposing a regression line. We will do this and store the plot in the object "initial_plot".
+```{r}
+inital_plot <- ggplot(spotifyTop, aes(x=acousticness, y = loudness)) + 
+                  geom_point() +
+                  geom_smooth(method = "lm")
+inital_plot
+  
+```
+Some initial observations: there seems to be a negative relationship between acousticness and loudness, but a single outlier in loudness (around -60) might be distorting our analysis. We will filter out this point with dplyr and assign the result to inital_plot, since the difference between the old and new plots is minor.
+
+```{r}
+inital_plot <- ggplot(filter(spotifyTop, loudness > -60), aes(x=acousticness, y = loudness)) + 
+                  geom_point() +
+                  geom_smooth(method = "lm")
+inital_plot
+```
+
+Now that we have a closer view of the plot, the negative relationship between acousticness and loudness is clear. Suppose we wanted to investigate whether this relationship remains true over time. We could answer this question by coloring each dot with the release year of that song. Then, we could facet wrap by year so that acousticness and loudness are displayed for each year in the dataset.
+```{r}
+facet_plot <- inital_plot +
+                aes(color = factor(album_release_year)) +
+                facet_wrap( ~ album_release_year, ncol = 10) +
+                geom_smooth(method = "lm", color = "black", size = 1) +
+                theme(panel.spacing = unit(1, "line"), legend.position = "none")
+facet_plot
+```
+
+These axis values may be hard to read, but a more readable version can be found by displaying facet_plot in Markdown and clicking "Show in New Window". Clearly, the negative relationship between acousticness and loudness is present regardless of year, though some years have a more negative relationship than others.
